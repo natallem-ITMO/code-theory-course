@@ -154,22 +154,23 @@ std::vector<std::vector<Node *>>
 build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream &ostream) {
     static const bool debug = false;
     std::vector<std::vector<Node *>> level_nodes;
+    vector<int> starts(n);
+    vector<int> ends(n);
+    for (int i = 0; i < n; ++i) {
+        auto[start, end] = activation_start_end(matrix[i]);
+        starts[i] = start;
+        ends[i] = end;
+    }
     for (int level = 0; level <= m; ++level) {
         std::vector<int> activated_vertexes;
         for (int i = 0; i < n; ++i) {
-            auto[start, end] = activation_start_end(matrix[i]);
+            int start = starts[i];
+            int end = ends[i];
             if (start <= level - 1 && end >= level) {
                 activated_vertexes.push_back(i);
             }
         }
         int vertexes_size = 1 << activated_vertexes.size();
-        if constexpr(debug) {
-            ostream << "Log(|V" << level << "|)=" << log2(vertexes_size) << "\t\t";
-            for (auto t: activated_vertexes) {
-                ostream << t << " ";
-            }
-            ostream << '\n';
-        }
         ostream << vertexes_size << " ";
         if (level == 0) {
             Node *first_node = new Node();
