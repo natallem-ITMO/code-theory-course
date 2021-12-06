@@ -14,6 +14,14 @@ using matrix_t = vector<line_t>;
 
 const bool verbose_debug = false;
 
+struct pairhash {
+public:
+    template<typename T, typename U>
+    std::size_t operator()(const std::pair<T, U> &x) const {
+        return std::hash<T>()(x.first) ^ std::hash<U>()(x.second);
+    }
+};
+
 pair<int, int> activation_start_end(line_t &line) {
     int start = -1;
     int end = -1;
@@ -103,36 +111,10 @@ void simplify_matrix(matrix_t &m, int n, int k) {
 }
 
 struct Node {
-    int num;
-    std::vector<int> activated_vertexes;
-    std::vector<bool> activated_values;
+    std::unordered_set<std::pair<int, int>, pairhash> activated_values;
     std::vector<Node *> input_edges;
-    std::vector<Node *> output_edges;
-    std::vector<double> output_edges_value;
     std::vector<double> input_edges_value;
     std::vector<double> error_input_edge;
-
-    std::string toString() {
-        std::string res = "activated nums: ";
-        for (auto t: activated_vertexes) {
-            res += std::to_string(t) + " ";
-        }
-        res += " values: ";
-        for (auto t: activated_values) {
-            res += std::to_string(t);
-        }
-        res += ", edges: ";
-        int alignment_size = res.size();
-        for (int i = 0; i < input_edges.size(); ++i) {
-            if (i != 0) {
-                res += "\n\t" + string(alignment_size, ' ');
-            }
-            res += "input edge num(" + std::to_string(input_edges[i]->num) + ")(edge=" +
-                   to_string(input_edges_value[i]) + ")=" +
-                   std::to_string(error_input_edge[i]) + " ";
-        }
-        return res;
-    }
 
 };
 
@@ -161,8 +143,9 @@ build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream
         starts[i] = start;
         ends[i] = end;
     }
+    vector<vector<int>> level_activated_vertexes(m + 1);
     for (int level = 0; level <= m; ++level) {
-        std::vector<int> activated_vertexes;
+        std::vector<int> &activated_vertexes = level_activated_vertexes[level];
         for (int i = 0; i < n; ++i) {
             int start = starts[i];
             int end = ends[i];
@@ -180,50 +163,40 @@ build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream
         std::vector<Node *> nodes;
         for (int i = 0; i < vertexes_size; ++i) {
             Node *cur_node = new Node();
-            cur_node->activated_vertexes = activated_vertexes;
-            cur_node->activated_values = convert(i, activated_vertexes.size());
-            cur_node->num = i;
+            auto activated_values = convert(i, activated_vertexes.size());
+            for (int j = 0; j < activated_values.size(); ++j) {
+                cur_node->activated_values.insert({activated_vertexes[j], activated_values[j]});
+            }
             nodes.push_back(cur_node);
         }
-
+        std::vector<int> &prev_activated_vertexes = level_activated_vertexes[level - 1];
         for (Node *node: nodes) {
             for (Node *prev_node: level_nodes[level - 1]) {
                 bool need_to_connect = true;
-                for (int i = 0; i < prev_node->activated_vertexes.size(); ++i) {
-                    int prev_active_vertex_num = prev_node->activated_vertexes[i];
-                    bool prev_active_vertex_value = prev_node->activated_values[i];
-                    auto it = std::find(activated_vertexes.begin(), activated_vertexes.end(), prev_active_vertex_num);
-                    if (it != activated_vertexes.end()) {
-                        int index = std::distance(activated_vertexes.begin(), it);
-                        if (node->activated_values[index] != prev_active_vertex_value) {
-                            need_to_connect = false;
-                            goto checked_node;
-                        }
+                for (int &activated_vertex: activated_vertexes) {
+                    if (node->activated_values.find({activated_vertex, 0}) != node->activated_values.end()
+                        &&
+                        prev_node->activated_values.find({activated_vertex, 1}) !=
+                        prev_node->activated_values.end()
+                        ||
+                        node->activated_values.find({activated_vertex, 1}) != node->activated_values.end()
+                        &&
+                        prev_node->activated_values.find({activated_vertex, 0}) !=
+                        prev_node->activated_values.end()) {
+                        need_to_connect = false;
+                        break;
                     }
                 }
-                checked_node:
                 if (need_to_connect) {
                     bool current_value = false;
                     for (int line_num = 0; line_num < n; ++line_num) {
-                        auto it = std::find(activated_vertexes.begin(), activated_vertexes.end(), line_num);
-                        auto it_prev = std::find(prev_node->activated_vertexes.begin(),
-                                                 prev_node->activated_vertexes.end(), line_num);
-                        bool is_line_active = false;
-                        if (it != activated_vertexes.end()) {
-                            int index = std::distance(activated_vertexes.begin(), it);
-                            is_line_active = node->activated_values[index];
-                        } else if (it_prev != prev_node->activated_vertexes.end()) {
-                            size_t index = std::distance(prev_node->activated_vertexes.begin(), it_prev);
-                            is_line_active = prev_node->activated_values[index];
-                        }
-                        if (is_line_active) {
+                        if (node->activated_values.find({line_num, 1}) != node->activated_values.end()
+                            || prev_node->activated_values.find({line_num, 1}) != prev_node->activated_values.end()) {
                             current_value = matrix[line_num][level - 1] ? !current_value : current_value;
                         }
                     }
                     node->input_edges.push_back(prev_node);
                     node->input_edges_value.push_back(current_value ? -1. : 1.);
-                    prev_node->output_edges.push_back(node);
-                    prev_node->output_edges_value.push_back(current_value ? -1. : 1.);
                 }
             }
         }
@@ -247,7 +220,6 @@ std::vector<bool> decode(std::vector<std::vector<Node *>> &level_nodes, std::vec
     level_nodes[0][0]->error_input_edge = {0};
     for (int level = 1; level <= n; ++level) {
         for (Node *node: level_nodes[level]) {
-            int node_num = node->num;
             for (int i = 0; i < node->input_edges.size(); ++i) {
                 double edge_value = node->input_edges_value[i];
                 double error_rate = edge_value * y[level - 1];
