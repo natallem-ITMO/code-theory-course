@@ -1,20 +1,3 @@
-#pragma GCC optimize("Ofast,no-stack-protector")
-#pragma GCC target("sse,sse2,sse3,ssse3,sse4,popcnt,abm,mmx,avx,avx2,tune=native")
-#pragma GCC optimize("unroll-loops")
-#pragma GCC optimize("fast-math")
-#pragma GCC optimize("section-anchors")
-#pragma GCC optimize("profile-values,profile-reorder-functions,tracer")
-#pragma GCC optimize("vpt")
-#pragma GCC optimize("rename-registers")
-#pragma GCC optimize("move-loop-invariants")
-#pragma GCC optimize("unswitch-loops")
-#pragma GCC optimize("function-sections")
-#pragma GCC optimize("data-sections")
-#pragma GCC optimize("branch-target-load-optimize")
-#pragma GCC optimize("branch-target-load-optimize2")
-#pragma GCC optimize("btr-bb-exclusive")
-
-
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -22,12 +5,19 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <iomanip>
 
 using namespace std;
 
 using line_t = vector<bool>;
 using matrix_t = vector<line_t>;
 
+
+void set_false_vector(vector<bool> &v) {
+    for (int i = 0; i < v.size(); ++i) {
+        v[i] = false;
+    }
+}
 
 pair<int, int> activation_start_end(line_t &line) {
     int start = -1;
@@ -49,15 +39,12 @@ void subtract(matrix_t &matrix, int l1, int l2) {
     }
 }
 
-
 void simplify_matrix(matrix_t &m, int n, int k) {
     for (int t = 0; t < k; ++t) {
         int min_start_pos = INT_MAX;
         int min_start_pos_index = -1;
-//        vector<int> start_pos(k);
         for (int i = t; i < k; ++i) {
             auto[start, end] = activation_start_end(m[i]);
-//            start_pos[i] = start;
             if (min_start_pos > start) {
                 min_start_pos = start;
                 min_start_pos_index = i;
@@ -76,13 +63,11 @@ void simplify_matrix(matrix_t &m, int n, int k) {
     for (int t = 0; t < k; ++t) {
         int max_end_pos = -1;
         int max_end_pos_index = -1;
-//        vector<int> end_pos(k);
         for (int i = k - 1; i >= 0; --i) {
             if (processed_lines[i]) {
                 continue;
             }
             auto[start, end] = activation_start_end(m[i]);
-//            end_pos[i] = end;
             if (max_end_pos < end) {
                 max_end_pos = end;
                 max_end_pos_index = i;
@@ -123,8 +108,7 @@ std::vector<bool> convert(int x, int num) {
 
 std::vector<std::vector<Node>>
 build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream &ostream) {
-    static const bool debug = false;
-    std::vector<std::vector<Node>> level_nodes(m+1);
+    std::vector<std::vector<Node>> level_nodes(m + 1);
     vector<int> starts(n);
     vector<int> ends(n);
     for (int i = 0; i < n; ++i) {
@@ -150,15 +134,15 @@ build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream
         }
         for (int i = 0; i < vertexes_size; ++i) {
             level_nodes[level].push_back(Node());
-            Node & cur_node = level_nodes[level].back();
+            Node &cur_node = level_nodes[level].back();
             cur_node.activated_values = convert(i, activated_vertexes.size());
         }
-        std::vector<Node>& nodes = level_nodes[level];
+        std::vector<Node> &nodes = level_nodes[level];
         std::vector<int> &prev_activated_vertexes = level_activated_vertexes[level - 1];
         for (int i = 0; i < nodes.size(); ++i) {
-            Node& node = nodes[i];
-            for (int j = 0; j < level_nodes[level-1].size(); ++j) {
-                Node& prev_node = level_nodes[level-1][j];
+            Node &node = nodes[i];
+            for (int j = 0; j < level_nodes[level - 1].size(); ++j) {
+                Node &prev_node = level_nodes[level - 1][j];
                 bool need_to_connect = true;
                 int prev_ind = 0;
                 int ind = 0;
@@ -183,11 +167,14 @@ build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream
                         while (ind < activated_vertexes.size() && activated_vertexes[ind] < line_num) {
                             ++ind;
                         }
-                        while (prev_ind < prev_activated_vertexes.size() && prev_activated_vertexes[prev_ind] < line_num) {
+                        while (prev_ind < prev_activated_vertexes.size() &&
+                               prev_activated_vertexes[prev_ind] < line_num) {
                             ++prev_ind;
                         }
-                        if (ind < activated_vertexes.size() && activated_vertexes[ind] == line_num && node.activated_values[ind]
-                            || prev_ind < prev_activated_vertexes.size() && prev_activated_vertexes[prev_ind] == line_num && prev_node.activated_values[prev_ind]) {
+                        if ((ind < activated_vertexes.size() && activated_vertexes[ind] == line_num &&
+                            node.activated_values[ind])
+                            || (prev_ind < prev_activated_vertexes.size() &&
+                               prev_activated_vertexes[prev_ind] == line_num && prev_node.activated_values[prev_ind])) {
                             current_value = matrix[line_num][level - 1] ? !current_value : current_value;
                         }
                     }
@@ -210,16 +197,16 @@ void clean_nodes(std::vector<std::vector<Node>> &level_nodes) {
     }
 }
 
-std::vector<bool> decode(std::vector<std::vector<Node>> &level_nodes, std::vector<double> &y, int k, int n) {
+void decode(std::vector<std::vector<Node>> &level_nodes, std::vector<double> &y, int k, int n, std::vector<bool> &res) {
     clean_nodes(level_nodes);
     level_nodes[0][0].max_error = {0};
     for (int level = 1; level <= n; ++level) {
         for (int j = 0; j < level_nodes[level].size(); ++j) {
-            Node& node = level_nodes[level][j];
+            Node &node = level_nodes[level][j];
             for (int i = 0; i < node.input_edges.size(); ++i) {
                 double edge_value = node.input_edges_value[i];
                 double error_rate = edge_value * y[level - 1];
-                double prev_error = level_nodes[level-1][node.input_edges[i]].max_error;
+                double prev_error = level_nodes[level - 1][node.input_edges[i]].max_error;
                 double cur_error = prev_error + error_rate;
                 if (node.prev_index == -1 || node.max_error < cur_error) {
                     node.prev_index = i;
@@ -229,48 +216,47 @@ std::vector<bool> decode(std::vector<std::vector<Node>> &level_nodes, std::vecto
         }
     }
     int node_index = 0;
-    vector<bool> result(n);
     for (int level = n; level > 0; --level) {
-        Node& node = level_nodes[level][node_index];
-        result[level - 1] = node.input_edges_value[node.prev_index] == -1;
+        Node &node = level_nodes[level][node_index];
+        res[level - 1] = node.input_edges_value[node.prev_index] == -1;
         node_index = node.input_edges[node.prev_index];
     }
-    return result;
 }
 
-vector<bool> encode(const vector<bool> &v, const matrix_t &m, int n, int k) {
-    vector<bool> res(n, false);
+
+void encode(const vector<bool> &v, const matrix_t &m, int n, int k, vector<bool> &res) {
     for (int j = 0; j < k; ++j) {
         if (v[j]) {
             for (int i = 0; i < n; ++i) {
-                res[i] = res[i] xor m[j][i]; // ((!res[i]) != (!m[j][i]));
+                res[i] = res[i] xor m[j][i];
             }
         }
     }
-    return res;
 }
-
 
 double
 run_simulation(const double noise_level, const long iteration_number, const long max_error,
                std::vector<std::vector<Node>> &level_nodes,
-               int n, int k, const matrix_t &m, std::default_random_engine &generator, double R) {
-    double sigma = std::sqrt(1. / (2. * R * std::pow(10., noise_level / 10.)));
+               int n, int k, const matrix_t &m, std::mt19937 &generator,
+               std::uniform_int_distribution<std::mt19937::result_type> &uniform_distribution, double R, vector<bool> &origin,
+               vector<bool> &origin_encoded,
+               vector<double> &noised_encoded, vector<bool> &decoded) {
+//    double sigma = std::sqrt(1. / (2. * R * std::pow(10., noise_level / 10.)));
+    double sigma = std::sqrt(
+    0.5 * pow(10, (-noise_level) / 10) / ((double) R));
     long cur_error_number = 0;
     long cur_iteration = 0;
     std::normal_distribution<double> gauss_dist(0.0f, sigma);
-    std::bernoulli_distribution bernoulliDistribution;
     while (cur_iteration < iteration_number && cur_error_number < max_error) {
-        vector<bool> origin(k);
         for (int i = 0; i < k; ++i) {
-            origin[i] = bernoulliDistribution(generator);
+            origin[i] = uniform_distribution(generator) == 1;
         }
-        vector<bool> origin_encoded = encode(origin, m, n, k);
-        vector<double> noised_origin(n);
+        set_false_vector(origin_encoded);
+        encode(origin, m, n, k, origin_encoded);
         for (int i = 0; i < n; ++i) {
-            noised_origin[i] = (origin_encoded[i] ? -1. : 1.) + gauss_dist(generator);
+            noised_encoded[i] = (origin_encoded[i] ? -1. : 1.) + gauss_dist(generator);
         }
-        vector<bool> decoded = decode(level_nodes, noised_origin, k, n);
+        decode(level_nodes, noised_encoded, k, n, decoded);
         if (decoded != origin_encoded) {
             ++cur_error_number;
         }
@@ -280,11 +266,13 @@ run_simulation(const double noise_level, const long iteration_number, const long
 }
 
 int main() {
-    ios_base::sync_with_stdio(NULL);
-    cin.tie(NULL);
-    cout.tie(NULL);
+//    unsigned int start_time =  clock();
+//    ios_base::sync_with_stdio(NULL);
+//    cin.tie(NULL);
+//    cout.tie(NULL);
     ifstream fin("input.txt");
     ofstream fout("output.txt");
+    fout << std::setprecision(10);
     int n, k;
     fin >> n >> k;
     double R = double(k) / n;
@@ -293,68 +281,56 @@ int main() {
         for (int j = 0; j < n; ++j) {
             int t;
             fin >> t;
-            if (t == 1) {
-                init_matrix[i][j] = true;
-            }
+            init_matrix[i][j] = t == 1;
         }
     }
     matrix_t matrix = init_matrix;
     simplify_matrix(matrix, n, k);
     std::vector<std::vector<Node>> level_nodes = build_lattice(matrix, k, n, fout);
     string command;
-    std::default_random_engine generator;
+//    std::default_random_engine generator;
+//    std::bernoulli_distribution bernoulliDistribution;
+    std::random_device rd{};
+    std::mt19937 generator{rd()};
+    std::uniform_int_distribution<std::mt19937::result_type> uniform_distr(0, 1);
+
+    vector<bool> encoded_vector(n);
+    vector<bool> decoded_vector(n);
+    vector<double> noised_encoded(n);
+    vector<bool> origin(k);
     while (fin >> command) {
         if (command == "Encode") {
-            vector<bool> to_encode(k);
             for (int i = 0; i < k; ++i) {
                 int t;
                 fin >> t;
-                to_encode[i] = t == 1;
+                origin[i] = t == 1;
             }
-            vector<bool> multiplication = encode(to_encode, init_matrix, n, k);
-            for (auto t: multiplication) {
+            set_false_vector(encoded_vector);
+            encode(origin, init_matrix, n, k, encoded_vector);
+            for (auto t: encoded_vector) {
                 fout << (int) t << " ";
             }
             fout << "\n";
         } else if (command == "Decode") {
-            vector<double> y(n);
             for (int i = 0; i < n; ++i) {
-                fin >> y[i];
+                fin >> noised_encoded[i];
             }
-            std::vector<bool> c = decode(level_nodes, y, k, n);
-            for (auto t: c) {
+            decode(level_nodes, noised_encoded, k, n, decoded_vector);
+            for (auto t: decoded_vector) {
                 fout << (int) t << " ";
             }
             fout << "\n";
         } else if (command == "Simulate") {
-            double noise_level;
+            int noise_level;
             int iteration_number;
             int max_error;
             fin >> noise_level >> iteration_number >> max_error;
-            double res = run_simulation(noise_level, iteration_number, max_error, level_nodes, n, k, init_matrix,
-                                        generator, R);
-            fout << res << '\n';
-        } else {
-            fout << "unknown command";
+            fout << std::fixed << (double) run_simulation(noise_level, iteration_number, max_error, level_nodes, n, k, init_matrix,
+                                   generator, uniform_distr, R, origin, encoded_vector, noised_encoded,
+                                   decoded_vector) << '\n';
         }
     }
-#ifdef DEBUG
-    fout.close();
-    ifstream t("output.txt");
-    t.seekg(0, std::ios::end);
-    size_t size = t.tellg();
-    std::string buffer(size, ' ');
-    t.seekg(0);
-    t.read(&buffer[0], size);
-    std::string expected = "1 2 4 8 4 8 4 2 1 \n"
-                           "1 1 1 1 1 1 1 1 \n"
-                           "0 0 1 1 1 1 0 0 \n"
-                           "0.0264131\n"
-                           "0.00830565\n";
-    if (buffer != expected) {
-        std::cout << "Output not equal to origin. Expected:\n" << expected << "Got:\n" << buffer;
-        return 1;
-    }
-#endif
-    return 0;
+//    unsigned int end_time = clock(); // конечное время
+//    unsigned int search_time = end_time - start_time;
+//    std::cout << "time - " << search_time;
 }
