@@ -13,6 +13,7 @@ using line_t = vector<bool>;
 using matrix_t = vector<line_t>;
 
 
+
 void set_false_vector(vector<bool> &v) {
     for (int i = 0; i < v.size(); ++i) {
         v[i] = false;
@@ -32,6 +33,18 @@ pair<int, int> activation_start_end(line_t &line) {
     }
     return {start, end};
 }
+
+void show_matrix(matrix_t &m, std::ostream &ostream = std::cout) {
+    for (int i = 0; i < m.size(); ++i) {
+        for (int j = 0; j < m[i].size(); ++j) {
+            ostream << m[i][j];
+        }
+        auto[start, end] = activation_start_end(m[i]);
+        ostream << " (" << i << ") {" << start << ", " << end << "}\n";
+    }
+    ostream << '\n';
+}
+
 
 void subtract(matrix_t &matrix, int l1, int l2) {
     for (int i = 0; i < matrix[l1].size(); ++i) {
@@ -81,6 +94,56 @@ void simplify_matrix(matrix_t &m, int n, int k) {
             if (m[i][max_end_pos]) {
                 subtract(m, i, max_end_pos_index);
             }
+        }
+    }
+}
+
+
+void simplify_matrix2(matrix_t &m, int n, int k) {
+    int processed_column_count = 0;
+    for (int t = 0; t < n && processed_column_count < k; ++t) {
+        int first_column = -1;
+        for (int i = processed_column_count; i < k; ++i) {
+            if (m[i][t]) {
+                first_column = i;
+                break;
+            }
+        }
+        if (first_column != -1) {
+            if (first_column != processed_column_count) {
+                subtract(m, processed_column_count, first_column);
+            }
+            for (int i = processed_column_count + 1; i < k; ++i) {
+                if (m[i][t]) {
+                    subtract(m, i, processed_column_count);
+                }
+            }
+            ++processed_column_count;
+        }
+//        std::cout << "Processed col " << t << ":\n";
+//        show_matrix(m);
+//        std::cout << "Number of processed cols " << processed_column_count << ", k=" << k << "\n";
+    }
+    processed_column_count = 0;
+    vector<bool> processed_lines(k, false);
+    for (int t = 0; t < n && processed_column_count < k; ++t) {
+        int last_column = -1;
+        int check_col_num = n - 1 - t;
+        for (int i = k - 1; i >= 0; --i) {
+            if (processed_lines[i]) {
+                continue;
+            }
+            if (m[i][check_col_num]) {
+                if (last_column == -1) {
+                    last_column = i;
+                } else {
+                    subtract(m, i, last_column);
+                }
+            }
+        }
+        if (last_column != -1) {
+            processed_lines[last_column] = true;
+            ++processed_column_count;
         }
     }
 }
@@ -172,9 +235,10 @@ build_lattice(std::vector<std::vector<bool>> &matrix, int n, int m, std::ostream
                             ++prev_ind;
                         }
                         if ((ind < activated_vertexes.size() && activated_vertexes[ind] == line_num &&
-                            node.activated_values[ind])
+                             node.activated_values[ind])
                             || (prev_ind < prev_activated_vertexes.size() &&
-                               prev_activated_vertexes[prev_ind] == line_num && prev_node.activated_values[prev_ind])) {
+                                prev_activated_vertexes[prev_ind] == line_num &&
+                                prev_node.activated_values[prev_ind])) {
                             current_value = matrix[line_num][level - 1] ? !current_value : current_value;
                         }
                     }
@@ -238,12 +302,13 @@ double
 run_simulation(const double noise_level, const long iteration_number, const long max_error,
                std::vector<std::vector<Node>> &level_nodes,
                int n, int k, const matrix_t &m, std::mt19937 &generator,
-               std::uniform_int_distribution<std::mt19937::result_type> &uniform_distribution, double R, vector<bool> &origin,
+               std::uniform_int_distribution<std::mt19937::result_type> &uniform_distribution, double R,
+               vector<bool> &origin,
                vector<bool> &origin_encoded,
                vector<double> &noised_encoded, vector<bool> &decoded) {
 //    double sigma = std::sqrt(1. / (2. * R * std::pow(10., noise_level / 10.)));
     double sigma = std::sqrt(
-    0.5 * pow(10, (-noise_level) / 10) / ((double) R));
+            0.5 * pow(10, (-noise_level) / 10) / ((double) R));
     long cur_error_number = 0;
     long cur_iteration = 0;
     std::normal_distribution<double> gauss_dist(0.0f, sigma);
@@ -285,7 +350,7 @@ int main() {
         }
     }
     matrix_t matrix = init_matrix;
-    simplify_matrix(matrix, n, k);
+    simplify_matrix2(matrix, n, k);
     std::vector<std::vector<Node>> level_nodes = build_lattice(matrix, k, n, fout);
     string command;
 //    std::default_random_engine generator;
@@ -325,9 +390,10 @@ int main() {
             int iteration_number;
             int max_error;
             fin >> noise_level >> iteration_number >> max_error;
-            fout << std::fixed << (double) run_simulation(noise_level, iteration_number, max_error, level_nodes, n, k, init_matrix,
-                                   generator, uniform_distr, R, origin, encoded_vector, noised_encoded,
-                                   decoded_vector) << '\n';
+            fout << std::fixed
+                 << (double) run_simulation(noise_level, iteration_number, max_error, level_nodes, n, k, init_matrix,
+                                            generator, uniform_distr, R, origin, encoded_vector, noised_encoded,
+                                            decoded_vector) << '\n';
         }
     }
 //    unsigned int end_time = clock(); // конечное время
